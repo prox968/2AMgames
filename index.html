@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>SLICED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Permanent+Marker&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+
+<style id="sliced-diagnostics-style">
+  #sliced-diag-toggle {
+    position: fixed; right: 12px; bottom: 12px; z-index: 99999;
+    border: 1px solid #8a292f; background: #171215; color: #ffdfe1;
+    padding: 8px 11px; font: 10px/1.2 'IBM Plex Mono', monospace;
+    letter-spacing: .12em; cursor: pointer; box-shadow: 0 3px 14px #0002;
+  }
+  #sliced-diag-toggle.has-errors { background: #8e2028; color: #fff; border-color: #8e2028; }
+  #sliced-diag-panel {
+    position: fixed; right: 12px; bottom: 50px; z-index: 99999;
+    width: min(430px, calc(100vw - 24px)); max-height: min(45vh, 390px);
+    display: flex; flex-direction: column; overflow: hidden;
+    color: #f2eeee; background: rgba(20, 16, 18, .97);
+    border: 1px solid #8e3038; box-shadow: 0 8px 35px #0004;
+    font: 11px/1.45 'IBM Plex Mono', monospace;
+  }
+  #sliced-diag-panel[hidden] { display: none; }
+  #sliced-diag-head { display:flex; align-items:center; gap:7px; padding:10px; border-bottom:1px solid #493238; }
+  #sliced-diag-head strong { flex:1; letter-spacing:.12em; font-size:10px; }
+  #sliced-diag-head button { border:1px solid #65444a; color:#f2eeee; background:#292024; padding:5px 7px; cursor:pointer; font:inherit; font-size:9px; }
+  #sliced-diag-summary { padding:8px 10px; color:#cbbdc0; border-bottom:1px solid #35282b; }
+  #sliced-diag-log { margin:0; padding:10px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color:#ffd9dc; font:10px/1.5 'IBM Plex Mono', monospace; }
+  #sliced-diag-log:empty::before { content:'No errors recorded yet. The monitor is active.'; color:#b5a9ac; }
+  @media (max-width:560px) {
+    #sliced-diag-panel { right:8px; bottom:48px; width:calc(100vw - 16px); max-height:50vh; }
+    #sliced-diag-toggle { right:8px; bottom:8px; }
+  }
+</style>
+
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="hud-left"><div id="h-money">¥ 0</div><div class="status" id="h-status-l"></div></div>
+  <div class="hud-mid" id="h-lives"><span></span><span></span><span></span></div>
+  <div class="hud-right"><div id="h-combo"></div><div id="h-cbar"><i></i></div><div class="status" id="h-status-r"></div></div>
+</div>
+
+<!-- ============ MENU ============ -->
+<div class="screen on" id="scr-menu">
+  <div class="panel">
+    <div class="title-row"><h1>SLICED</h1><div class="seal">斬</div></div>
+    <p class="tag">black shapes drift through a white world.<br>hold, drag fast, and find out what each one does.</p>
+    <div class="btns menu-actions">
+      <button class="btn primary" id="b-start">BEGIN</button>
+    </div>
+    <div class="fold" id="fold-mode">
+      <button class="fold-head" id="fh-mode"><span>MODE — <b id="fh-mode-v"></b></span><i class="fold-chev"></i></button>
+      <div class="fold-body"><div class="fold-inner">
+        <div class="fold-list" id="fl-mode"></div>
+        <div class="fold-note" id="fn-mode"></div>
+      </div></div>
+    </div>
+    <div class="fold" id="fold-diff">
+      <button class="fold-head" id="fh-diff"><span>DIFFICULTY — <b id="fh-diff-v"></b></span><i class="fold-chev"></i></button>
+      <div class="fold-body"><div class="fold-inner">
+        <div class="fold-list" id="fl-diff"></div>
+        <div class="fold-note" id="fn-diff"></div>
+      </div></div>
+    </div>
+    <div class="btns" style="margin-top:22px">
+      <button class="btn" id="b-shop">SHOP</button>
+      <button class="btn" id="b-settings">SETTINGS</button>
+      <button class="btn" id="b-status">STATUS</button>
+      <button class="btn" id="b-misc">MISC</button>
+    </div>
+    <p class="hint">HOLD &amp; DRAG TO SLASH · SWIFT STROKES ONLY · P PAUSE · M MUTE</p>
+    <p class="stats-line" id="menu-stats"></p>
+  </div>
+</div>
+
+<!-- ============ SHOP ============ -->
+<div class="screen block" id="scr-shop">
+  <div class="panel">
+    <div class="shop-head"><div class="shop-title">SHOP</div><div class="shop-bank" id="shop-bank"></div></div>
+    <div class="shop-list" id="shop-list"></div>
+    <div class="back-row"><button class="btn" id="b-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div class="screen block" id="scr-settings">
+  <div class="panel set-panel">
+    <div class="shop-head"><div class="shop-title">SETTINGS</div></div>
+    <div class="shop-list">
+      <div class="shop-sec">AUDIO</div>
+      <div class="set-row"><span>SFX VOLUME</span><div class="set-ctl"><input type="range" id="s-vol" min="0" max="100" step="1"><b id="v-vol"></b></div></div>
+      <div class="set-row"><span>MUSIC VOLUME</span><div class="set-ctl"><input type="range" id="s-mvol" min="0" max="100" step="1"><b id="v-mvol"></b></div></div>
+      <div class="set-row"><span>MENU THEME VOLUME</span><div class="set-ctl"><input type="range" id="s-mmvol" min="0" max="100" step="5"><b id="v-mmvol"></b></div></div>
+      <div class="set-row"><span>IN-MATCH MUSIC VOLUME</span><div class="set-ctl"><input type="range" id="s-mivol" min="0" max="100" step="5"><b id="v-mivol"></b></div></div>
+      <div class="set-row"><span>SFX PITCH VARIATION</span><div class="set-ctl"><input type="range" id="s-pvar" min="0" max="25" step="1"><b id="v-pvar"></b></div></div>
+      <div class="shop-sec">GAME</div>
+      <div class="set-row"><span>SCREEN SHAKE</span><div class="set-ctl"><input type="range" id="s-shk" min="0" max="100" step="5"><b id="v-shk"></b></div></div>
+      <div class="set-row"><span>TUTORIAL AUTOPLAY</span><div class="set-ctl"><button class="btn" id="s-tut" style="padding:9px 16px">NEVER SHOW AGAIN</button></div></div>
+      <div class="set-row"><span>BUTTON SCALE</span><div class="set-ctl"><input type="range" id="s-btn" min="80" max="130" step="5"><b id="v-btn"></b></div></div>
+      <div class="set-row"><span>TEXT SCALE</span><div class="set-ctl"><input type="range" id="s-txt" min="85" max="125" step="5"><b id="v-txt"></b></div></div>
+      <div class="set-row"><span>HIDE MENU TEXTS</span><div class="set-ctl"><button class="tog" id="s-hide"></button></div></div>
+      <div class="shop-sec">TRAILS</div>
+      <div class="set-row"><span>TRAIL EFFECT DENSITY</span><div class="set-ctl"><input type="range" id="s-fxt" min="0" max="200" step="10"><b id="v-fxt"></b></div></div>
+      <div class="set-row"><span>CUT EFFECT DENSITY</span><div class="set-ctl"><input type="range" id="s-fxc" min="0" max="200" step="10"><b id="v-fxc"></b></div></div>
+      <div class="set-row"><span>TRAIL SMOOTHNESS</span><div class="set-ctl"><input type="range" id="s-sm" min="0" max="3" step="1"><b id="v-sm"></b></div></div>
+    </div>
+    <div class="back-row"><button class="btn" id="b-set-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ STATUS ============ -->
+<div class="screen block" id="scr-status">
+  <div class="panel set-panel">
+    <div class="shop-head"><div class="shop-title">STATUS</div></div>
+    <div class="shop-list" id="status-list"></div>
+    <div class="back-row"><button class="btn" id="b-stat-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ MISC ============ -->
+<div class="screen block" id="scr-misc">
+  <div class="panel" style="max-width:420px">
+    <div class="shop-head"><div class="shop-title">MISC</div></div>
+    <div class="shop-list" style="margin-top:12px">
+      <div class="set-row"><span>PERFIS</span><button class="btn" id="b-perfil" style="padding:11px 22px 11px 26px">MANAGE</button></div>
+      <div class="set-row"><span>OBJECT LIST</span><button class="btn" id="b-objects" style="padding:11px 22px 11px 26px">OPEN</button></div>
+      <div class="set-row"><span>TUTORIAL</span><button class="btn" id="b-tut" style="padding:11px 22px 11px 26px">REVIEW</button></div>
+      <div class="set-row"><span>DEV MODE</span><button class="btn" id="b-dev" style="padding:11px 22px 11px 26px">ENABLE</button></div>
+    </div>
+    <div class="dev-entry" id="dev-entry" style="display:none">
+      <input type="text" id="dev-input" placeholder="speak the words" maxlength="64" autocomplete="off" spellcheck="false">
+      <button class="btn" id="dev-unlock" style="padding:12px 18px 12px 22px">UNLOCK</button>
+    </div>
+    <p class="dev-msg" id="dev-msg"></p>
+    <div class="back-row"><button class="btn" id="b-misc-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ OBJECT LIST ============ -->
+<div class="screen block" id="scr-objects">
+  <div class="panel" style="max-width:780px">
+    <div class="shop-head"><div class="shop-title">OBJECT LIST</div><div class="shop-bank" id="obj-count"></div></div>
+    <div id="obj-grid"></div>
+    <div class="back-row"><button class="btn" id="b-obj-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ TRAIL PREVIEW ============ -->
+<div class="screen block" id="scr-preview">
+  <div class="panel pv-panel">
+    <div class="pv-title" id="pv-name"></div>
+    <canvas id="pv-cv"></canvas>
+    <div class="pv-ctl">
+      <button class="pv-btn" id="pv-speed">SPEED ×1</button>
+      <button class="pv-btn" id="pv-cut">CUT DEMO</button>
+      <button class="pv-btn" id="pv-zoom">ZOOM ×1</button>
+    </div>
+    <p class="pv-hint" id="pv-hint"></p>
+    <button class="btn" id="b-pv-close">CLOSE</button>
+  </div>
+</div>
+
+<!-- ============ TRAIL LAB ============ -->
+<div class="screen block" id="scr-lab">
+  <div class="lab-bg"><i class="l1"></i><i class="l2"></i><i class="l3"></i></div>
+  <div class="panel lab-panel">
+    <div class="shop-head"><div class="shop-title lab-title">斬 THE LAB</div><div class="shop-bank lab-bank" id="lab-bank"></div></div>
+    <p class="lab-sub" id="lab-sub">SECRET FLOOR — MASTER YOUR BLADES · EVERY TRAIL LEVELS ×3 · PAID IN CUTS</p>
+    <div class="shop-list" id="lab-list"></div>
+    <div class="back-row"><button class="btn" id="b-lab-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ DUNGEON ============ -->
+<div class="screen block" id="scr-dungeon">
+  <div class="panel" style="max-width:520px">
+    <div class="shop-head"><div class="shop-title">DUNGEON</div></div>
+    <p class="custom-note" style="margin-top:16px">10 FLOORS · CUT THE GOAL TO DESCEND · A BOSS ON EVERY THIRD FLOOR</p>
+    <div class="dg-grid" id="dg-grid"></div>
+    <p class="custom-note" id="dg-note"></p>
+    <div class="back-row"><button class="btn" id="b-dg-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ CUSTOM MODE ============ -->
+<div class="screen block" id="scr-custom">
+  <div class="panel set-panel" style="max-width:560px">
+    <div class="shop-head"><div class="shop-title">CUSTOM ARCADE</div></div>
+    <div class="shop-list" id="custom-list" style="margin-top:12px"></div>
+    <p class="custom-note">OBJECTS — CLICK TO BANISH · CLICK AGAIN TO RECALL</p>
+    <div id="custom-objs"></div>
+    <div class="back-row"><button class="btn" id="b-custom-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ PERFIS ============ -->
+<div class="screen block" id="scr-perfil">
+  <div class="panel" style="max-width:460px">
+    <div class="shop-head"><div class="shop-title">PERFIS</div></div>
+    <div class="shop-list" id="perfil-list" style="margin-top:12px"></div>
+    <div class="btns" style="margin-top:20px">
+      <button class="btn primary" id="b-perfil-new">NEW PERFIL</button>
+    </div>
+    <div class="back-row"><button class="btn" id="b-perfil-back">BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ TUTORIAL ============ -->
+<div class="tut-overlay" id="scr-tut">
+  <div class="tut-box">
+    <div class="tut-step" id="tut-step"></div>
+    <div class="tut-btns">
+      <button class="btn" id="b-tut-skip">SKIP</button>
+      <button class="btn primary" id="b-tut-next" style="display:none">NEXT</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PAUSE ============ -->
+<div class="screen block" id="scr-pause">
+  <div class="panel">
+    <h2 class="go-title">PAUSED</h2>
+    <p class="tag">the world holds its breath.</p>
+    <p class="stats-line" id="pause-stats"></p>
+    <div class="btns">
+      <button class="btn primary" id="b-resume">RESUME</button>
+      <button class="btn" id="b-quit">ABANDON RUN</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ GAME OVER ============ -->
+<div class="screen" id="scr-over">
+  <div class="panel">
+    <div class="seal big" id="go-seal">斬</div>
+    <h2 class="go-title" id="go-title">THE BLADE RESTS</h2>
+    <div class="go-rows">
+      <div>EARNED<b id="go-earn"></b></div>
+      <div>CUTS<b id="go-cuts"></b></div>
+      <div>BEST COMBO<b id="go-best"></b></div>
+    </div>
+    <div class="btns">
+      <button class="btn primary" id="b-again">AGAIN</button>
+      <button class="btn" id="b-menu">MENU</button>
+    </div>
+  </div>
+</div>
+
+<!-- Small in-game diagnostics: works even when DevTools/console is unavailable. -->
+<div id="sliced-diag-panel" hidden role="status" aria-live="polite">
+  <div id="sliced-diag-head">
+    <strong>SLICED · ERROR REPORT</strong>
+    <button id="sliced-diag-copy" type="button">COPY</button>
+    <button id="sliced-diag-clear" type="button">CLEAR</button>
+    <button id="sliced-diag-close" type="button" aria-label="Close error report">×</button>
+  </div>
+  <div id="sliced-diag-summary">No errors recorded yet.</div>
+  <pre id="sliced-diag-log"></pre>
+</div>
+<button id="sliced-diag-toggle" type="button" aria-expanded="false">ERRORS 0</button>
+<script id="sliced-diagnostics-monitor">
+(function () {
+  'use strict';
+  var panel = document.getElementById('sliced-diag-panel');
+  var toggle = document.getElementById('sliced-diag-toggle');
+  var log = document.getElementById('sliced-diag-log');
+  var summary = document.getElementById('sliced-diag-summary');
+  var copyButton = document.getElementById('sliced-diag-copy');
+  var entries = [];
+  var nextId = 1;
+
+  function errorText(err) {
+    if (err && err.stack) return String(err.stack);
+    if (err && err.message) return String(err.message);
+    try { return String(err); } catch (_) { return 'Unknown error'; }
+  }
+  function render() {
+    toggle.textContent = 'ERRORS ' + entries.length;
+    toggle.classList.toggle('has-errors', entries.length > 0);
+    summary.textContent = entries.length
+      ? entries.length + ' error event' + (entries.length === 1 ? '' : 's') + ' captured · newest at bottom'
+      : 'No errors recorded yet. The monitor is active.';
+    log.textContent = entries.map(function (entry) {
+      return '[' + entry.id + '] ' + entry.time + ' — ' + entry.title + '\n' + entry.detail;
+    }).join('\n\n');
+  }
+  function show() {
+    panel.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+  }
+  function hide() {
+    panel.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+  function report(title, detail) {
+    entries.push({ id: nextId++, time: new Date().toLocaleTimeString(), title: title, detail: String(detail || '(no details)') });
+    if (entries.length > 20) entries.shift();
+    render();
+    show();
+  }
+  window.SLICED_REPORT_ERROR = report;
+
+  window.addEventListener('error', function (event) {
+    var target = event.target;
+    var tag = target && target.tagName ? String(target.tagName).toUpperCase() : '';
+    if (tag === 'AUDIO' || tag === 'VIDEO') {
+      var mediaError = target.error;
+      var codes = { 1: 'loading aborted', 2: 'network error', 3: 'audio/video decode error', 4: 'unsupported media or source' };
+      var codeText = mediaError ? ('MediaError ' + mediaError.code + (codes[mediaError.code] ? ' (' + codes[mediaError.code] + ')' : '')) : 'media load error';
+      report('AUDIO LOAD ERROR', 'File: ' + (target.currentSrc || target.src || '(source URL unavailable)') + '\n' + codeText);
+      return;
+    }
+    if (tag === 'SCRIPT') {
+      report('SCRIPT RESOURCE ERROR', 'Could not load: ' + (target.src || '(unknown script URL)'));
+      return;
+    }
+    var message = event.message || 'Unknown JavaScript error';
+    var where = event.filename ? ('\nAt: ' + event.filename + ':' + (event.lineno || 0) + ':' + (event.colno || 0)) : '';
+    var stack = event.error && event.error.stack ? '\n' + event.error.stack : '';
+    report('JAVASCRIPT ERROR', message + where + stack);
+  }, true);
+
+  window.addEventListener('unhandledrejection', function (event) {
+    report('UNHANDLED PROMISE', errorText(event.reason));
+  });
+
+  toggle.addEventListener('click', function () {
+    if (panel.hidden) show(); else hide();
+  });
+  document.getElementById('sliced-diag-close').addEventListener('click', hide);
+  document.getElementById('sliced-diag-clear').addEventListener('click', function () {
+    entries = [];
+    render();
+  });
+  copyButton.addEventListener('click', function () {
+    var text = entries.length ? entries.map(function (entry) {
+      return '[' + entry.id + '] ' + entry.time + ' — ' + entry.title + '\n' + entry.detail;
+    }).join('\n\n') : 'No errors recorded yet.';
+    function copied(ok) {
+      copyButton.textContent = ok ? 'COPIED' : 'SELECT TEXT';
+      if (!ok) {
+        var range = document.createRange();
+        range.selectNodeContents(log);
+        var selection = window.getSelection();
+        selection.removeAllRanges(); selection.addRange(range);
+      }
+      setTimeout(function () { copyButton.textContent = 'COPY'; }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { copied(true); }, function () { copied(false); });
+      return;
+    }
+    var area = document.createElement('textarea');
+    area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+    document.body.appendChild(area); area.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    area.remove(); copied(ok);
+  });
+  render();
+})();
+</script>
+
+<script src="script.js"></script>
+</body>
+</html>
